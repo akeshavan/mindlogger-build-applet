@@ -1,6 +1,7 @@
 import simplejson
 import os
 from github import Github, GithubException
+from IPython.display import display, HTML
 
 class ActivitySet(object):
     def __init__(self, user, repo, activitySet_id, cname=None, prefLabel="", altLabel="",
@@ -33,6 +34,9 @@ class ActivitySet(object):
                 "@version": 1.1,
             }
         }
+
+        self.previewURL = None
+        self.mindloggerURL = None
 
     def addImage(self):
         raise NotImplementedError("""
@@ -98,6 +102,7 @@ class ActivitySet(object):
         return url
 
 
+
     def postActivitySet(self):
         # 1. post the extra context
         context_url = self.postActivitySetContext()
@@ -126,5 +131,27 @@ class ActivitySet(object):
             url = "https://{cname}/{repo}/activitySets/{fid}/{fid}_schema.jsonld".format(cname=self.cname,
                                                                 repo=self.repo,
                                                                 fid=fid)
+        
+        self.previewURL = "https://schema-ui.anisha.pizza/#/activities/0?url={}".format(url)
+        self.mindloggerURL = "https://web.mindlogger.org/#/?inviteURL={}".format(url)
         return url
         
+    def preview(self):
+        return HTML("""
+            <p style="margin-bottom: 2em;">
+                Preview your activity set at <a target="_blank" href="{url}">{url}</a>
+            </p>
+            <p>
+                <b>Turn OFF your browser cache if things aren't updating</b>
+            </p>
+        """.format(url=self.previewURL))
+
+    def mindlogger(self):
+        return HTML("""
+            <p style="margin-bottom: 2em;">
+                Invite yourself to your applet on Mindlogger at <a target="_blank" href="{url}">{url}</a>
+            </p>
+            <p>
+                <b>Turn OFF your browser cache if things aren't updating</b>
+            </p>
+        """.format(url=self.mindloggerURL))
