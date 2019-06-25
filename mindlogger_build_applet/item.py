@@ -3,15 +3,16 @@ from github import Github, GithubException
 import os
 
 class Item(object):
-    def __init__(self, username, repo):
+    def __init__(self, username, repo, cname=None):
         self.data = {
-            "@context":"http://www.repronim.org/schema-standardization/contexts/generic.jsonld",
-            "@type": "http://www.repronim.org/schema-standardization/schemas/Field.jsonld",
+            "@context":"https://www.repronim.org/schema-standardization/contexts/generic.jsonld",
+            "@type": "https://www.repronim.org/schema-standardization/schemas/Field.jsonld",
             "schema:schemaVersion": "0.0.1",
             "schema:version": "0.0.1",
         }
         self.username = username
         self.repo = repo
+        self.cname = cname
     
     def validate(self):
         # TODO: make sure the @id of the item is valid
@@ -36,9 +37,16 @@ class Item(object):
             repo.update_file("/items/{}.jsonld".format(fid), 
                             "updated {}".format(fid), self.toJSON(),
                             filen.sha)
-        url = "https://{user}.github.io/{repo}/items/{fid}.jsonld".format(user=self.username,
+
+        if not self.cname:  
+            url = "https://{user}.github.io/{repo}/items/{fid}.jsonld".format(user=self.username,
                                                                            repo=self.repo,
                                                                            fid=fid)
+        else:
+            url = "https://{cname}/{repo}/items/{fid}.jsonld".format(cname=self.cname,
+                                                             repo=self.repo,
+                                                             fid=fid)
+
         return url
 
     def importItem(self, url):
@@ -56,7 +64,7 @@ class RadioResponseOptions(object):
         return simplejson.dumps(self.data)
 
 class Radio(Item):
-    def __init__(self, username, repo, item_id, prefLabel="", altLabel="",
+    def __init__(self, username, repo, item_id, cname=None, prefLabel="", altLabel="",
                  description="", question="", responseOptions={}):
         """
         inputs
