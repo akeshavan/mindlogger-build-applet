@@ -72,7 +72,7 @@ class Activity():
         except GithubException:
             filen = self.gh_repo.get_file_contents("/activities/{}_context.jsonld".format(fid))
             self.gh_repo.update_file("/activities/{}_context.jsonld".format(fid), 
-                            "updated {}_context".format(fid), self.toJSON(),
+                            "updated {}_context".format(fid), simplejson.dumps(self.extra_context),
                             filen.sha)
         if not self.cname:
             url = "https://{user}.github.io/{repo}/activities/{fid}_context.jsonld".format(user=self.user,

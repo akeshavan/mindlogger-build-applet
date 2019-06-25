@@ -91,7 +91,7 @@ class Radio(Item):
         
         
         """
-        super().__init__(username, repo)
+        super().__init__(username, repo, cname)
         self.data['@id'] = item_id
         self.data["skos:prefLabel"] = prefLabel
         self.data["skos:altLabel"] = altLabel
