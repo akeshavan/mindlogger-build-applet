@@ -60,6 +60,8 @@ class RadioResponseOptions(object):
                          )
         self.data['choices'] = [{'schema:name': c['name'], 'schema:value': c['value']} for c in choices]
 
+        # TODO: if c['image'] exits, add 'schema:image' in the list above.
+
     def toJSON(self):
         return simplejson.dumps(self.data)
 
@@ -98,7 +100,8 @@ class Radio(Item):
         self.data["schema:description"] = description
         self.data["question"] = question
         self.data["ui"] = {
-            "inputType": "radio"
+            "inputType": "radio",
+            "allow": ["autoAdvance"],
         }
         self.data["responseOptions"] = RadioResponseOptions(**responseOptions).data
         self.validate()
