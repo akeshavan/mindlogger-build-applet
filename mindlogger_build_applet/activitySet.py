@@ -3,31 +3,86 @@ import os
 from github import Github, GithubException
 from IPython.display import display, HTML
 
-class ActivitySet(object):
-    def __init__(self, user, repo, activitySet_id, cname=None, prefLabel="", altLabel="",
-                 description="", preamble="", scoringLogic={},
-                 allow=['skipped', 'dontKnow'], shuffle=False):
-        
-        self.user = user
-        self.repo = repo
-        self.cname = cname
-        g = Github(os.environ['GH_TOKEN'])
-        gh_repo = g.get_repo("{user}/{repo}".format(user=self.user, repo=self.repo))
-        
-        self.gh_repo = gh_repo
+from .utils import BaseNode
 
-        self.data = {
-                "@context":["https://www.repronim.org/schema-standardization/contexts/generic.jsonld"],
-                "@type": "https://www.repronim.org/schema-standardization/schemas/ActivitySet.jsonld",
-                "schema:schemaVersion": "0.0.1",
-                "schema:version": "0.0.1",
+
+class ActivitySetContext(BaseNode):
+    default_init_data = {
+        '@context': {
+            "@version": 1.1,
+        }
+    }
+
+    def __init__(self, activity_set, **kwargs):
+        self.activity_set = activity_set
+        super().__init__(**kwargs)
+        self.set_activities()
+
+    def get_path(self):
+        return "activitySets/{0}/{0}_context.jsonld".format(
+            self.activity_set.node_id)
+
+    def set_activities(self):
+        for activity in self.activity_set.activities:
+            self.data['@context'][activity.data['@id']] = {
+                '@id': activity.get_uri(),
+                '@type': '@id',
             }
-        self.data['@id'] = activitySet_id
-        self.data["skos:prefLabel"] = prefLabel
-        self.data["skos:altLabel"] = altLabel
-        self.data["schema:description"] = description
-        self.data['variableMap'] = []
-        self.data["ui"] = dict(shuffle=shuffle, allow=allow, order=[], visibility={}, activity_display_name={})
+
+    def get_data(self):
+        self.set_activities()
+        return self.data
+
+
+class ActivitySet(BaseNode):
+    default_init_data = {
+        "@context":["https://www.repronim.org/schema-standardization/contexts/generic.jsonld"],
+        "@type": "https://www.repronim.org/schema-standardization/schemas/ActivitySet.jsonld",
+        "schema:schemaVersion": "0.0.1",
+        "schema:version": "0.0.1",
+    }
+
+    # Map parameter to JSONLD key and default value.
+    set_data_mapping = {
+        "prefLabel": ("skos:prefLabel", ""),
+        "altLabel": ("skos:altLabel", ""),
+        "description": ("schema:description", ""),
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.data['@id'] = self.node_id
+        self.activities = []
+        self.previewURL_base = "https://schema-ui.anisha.pizza/#/activities/0?url="
+        self.mindloggerURL_base = "https://web.mindlogger.org/#/?inviteURL="
+        self.context = ActivitySetContext(activity_set=self, **kwargs)
+        if self.context.get_uri() not in self.data["@context"]:
+            self.data["@context"].append(self.context.get_uri())
+
+    def get_path(self):
+        return "activitySets/{0}/{0}_schema.jsonld".format(
+            self.node_id)
+
+    def set_data(self, **kwargs):
+        super().set_data(**kwargs)
+
+        if "variableMap" not in self.data:
+            self.data["variableMap"] = []
+
+        # UI adds defaults unless existing or provided.
+        ui_default = {
+            "allow": ["skipped", "dontKnow"],
+            "shuffle": False,
+            "order": [],
+            "visibility": {},
+            "activity_display_name": {},
+        }
+        ui = self.data.get("ui", ui_default)
+        if "allow" in kwargs:
+            ui["allow"] = kwargs["allow"]
+        if "shuffle" in kwargs:
+            ui["shuffle"] = kwargs["shuffle"]
+        self.data["ui"] = ui
 
         self.extra_context = {
             '@context': {
@@ -49,93 +104,34 @@ class ActivitySet(object):
         TODO: point to a markdown file on the computer and push it to the github repo
         then take the URL and add it to the "schema:about" property of self.data
         """)
-    
-    def toJSON(self):
-        return simplejson.dumps(self.data)
 
-    def addActivity(self, activity, displayName, visibility=True):
+    def set_activities(self):
+        variableMap_items = [
+            vm["variableName"] for vm in
+            self.data["variableMap"]
+        ]
+        for activity in self.activities:
+            if activity.data["@id"] not in variableMap_items:
+                self.data['variableMap'].append({
+                    "variableName": activity.data['@id'],
+                    "isAbout": activity.data['@id'],
+                })
+
+    def setActivity(self, activity, displayName, visibility=True):
         # TODO: make sure item is of type Activity
-        activity_url = activity.postActivity()
 
-        # TODO: make sure the item isn't already in the variableMap
-        self.data['variableMap'].append({
-            "variableName": activity.data['@id'],
-            "isAbout": activity.data['@id'],
-        })
+        # Add or overwrite item in self.activity.
+        new_activities = [a for a in self.activities if a.data["@id"] != activity.data["@id"]]
+        new_activities.append(activity)
+        self.activities = new_activities
+        self.set_activities()
+
+        # Add item to UI.
         self.data['ui']['visibility'][activity.data['@id']] = visibility
         self.data['ui']['activity_display_name'][activity.data['@id']] = displayName
-        # TODO: make sure the item isn't already in the context
-        self.extra_context['@context'][activity.data['@id']] = {
-            '@id': activity_url,
-            '@type': '@id',
-        }
+        if activity.data["@id"] not in self.data["ui"]["order"]:
+            self.data['ui']['order'].append(activity.data['@id'])
 
-        # TODO: make sure the item isn't already in the list
-        self.data['ui']['order'].append(activity.data['@id'])
-
-    
-    def postActivitySetContext(self):
-        """
-        
-        """
-        fid = self.data['@id']
-        try:
-            self.gh_repo.create_file("/activitySets/{}/{}_context.jsonld".format(fid, fid), 
-                            "updated {}/{}_context".format(fid, fid),
-                            simplejson.dumps(self.extra_context),
-                            branch="master")
-        except GithubException:
-            filen = self.gh_repo.get_file_contents("/activitySets/{}/{}_context.jsonld".format(fid, fid))
-            self.gh_repo.update_file("/activitySets/{}/{}_context.jsonld".format(fid, fid), 
-                            "updated {}/{}_context".format(fid, fid), simplejson.dumps(self.extra_context),
-                            filen.sha)
-        
-        if not self.cname:
-            url = "https://{user}.github.io/{repo}/activitySets/{fid}/{fid}_context.jsonld".format(user=self.user,
-                                                                           repo=self.repo,
-                                                                           fid=fid)
-        else:
-            url = "https://{cname}/{repo}/activitySets/{fid}/{fid}_context.jsonld".format(
-                                                                cname=self.cname,
-                                                                repo=self.repo,
-                                                                fid=fid)
-        return url
-
-
-
-    def postActivitySet(self):
-        # 1. post the extra context
-        context_url = self.postActivitySetContext()
-
-
-        # 2. update self.data.context with URL
-        self.data['@context'].append(context_url)
-
-        # 3. post self.data into the activities folder
-        fid = self.data['@id']
-        try:
-            self.gh_repo.create_file("/activitySets/{}/{}_schema.jsonld".format(fid, fid), 
-                            "updated {}/{}".format(fid, fid), self.toJSON(),
-                            branch="master")
-        except GithubException:
-            filen = self.gh_repo.get_file_contents("/activitySets/{}/{}_schema.jsonld".format(fid,fid))
-            self.gh_repo.update_file("/activitySets/{}/{}_schema.jsonld".format(fid, fid), 
-                            "updated {}/{}".format(fid,fid), self.toJSON(),
-                            filen.sha)
-        
-        if not self.cname:
-            url = "https://{user}.github.io/{repo}/activitySets/{fid}/{fid}_schema.jsonld".format(user=self.user,
-                                                                           repo=self.repo,
-                                                                           fid=fid)
-        else:
-            url = "https://{cname}/{repo}/activitySets/{fid}/{fid}_schema.jsonld".format(cname=self.cname,
-                                                                repo=self.repo,
-                                                                fid=fid)
-        
-        self.previewURL = "https://schema-ui.anisha.pizza/#/activities/0?url={}".format(url)
-        self.mindloggerURL = "https://web.mindlogger.org/#/?inviteURL={}".format(url)
-        return url
-        
     def preview(self):
         return HTML("""
             <p style="margin-bottom: 2em;">
@@ -144,7 +140,7 @@ class ActivitySet(object):
             <p>
                 <b>Turn OFF your browser cache if things aren't updating</b>
             </p>
-        """.format(url=self.previewURL))
+        """.format(url=(self.previewURL_base + self.get_uri())))
 
     def mindlogger(self):
         return HTML("""
@@ -154,4 +150,4 @@ class ActivitySet(object):
             <p>
                 <b>Turn OFF your browser cache if things aren't updating</b>
             </p>
-        """.format(url=self.mindloggerURL))
+        """.format(url=(self.mindloggerURL_base + self.get_uri())))
